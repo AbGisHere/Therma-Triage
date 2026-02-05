@@ -1,13 +1,13 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { signIn, signOut, useSession } from 'next-auth/react'
+import { api } from '@/lib/api'
 
 interface AuthContextType {
   user: any
   session: any
   isLoading: boolean
-  signIn: () => void
+  signIn: (username: string, password: string) => Promise<void>
   signOut: () => void
   isAuthenticated: boolean
 }
@@ -27,40 +27,56 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const { data: session, status } = useSession()
   const [user, setUser] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (session?.user) {
-      setUser({
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
-        image: session.user.image,
-        role: session.user.role || 'user'
-      })
+    // Check for existing token on mount
+    const token = api.getToken()
+    if (token) {
+      // Verify token by fetching current user
+      api.getCurrentUser()
+        .then(userData => {
+          setUser(userData)
+          setIsLoading(false)
+        })
+        .catch(() => {
+          api.clearToken()
+          setIsLoading(false)
+        })
     } else {
-      setUser(null)
+      setIsLoading(false)
     }
-  }, [session])
+  }, [])
 
-  const handleSignIn = () => {
-    signIn('google')
+  const handleSignIn = async (username: string, password: string) => {
+    try {
+      const response = await api.login(username, password)
+      api.setToken(response.access_token)
+      
+      // Get user data
+      const userData = await api.getCurrentUser()
+      setUser(userData)
+    } catch (error) {
+      throw error
+    }
   }
 
   const handleSignOut = () => {
-    signOut()
+    api.clearToken()
+    setUser(null)
+    window.location.href = '/login'
   }
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        session,
-        isLoading: status === 'loading',
+        session: user,
+        isLoading,
         signIn: handleSignIn,
         signOut: handleSignOut,
-        isAuthenticated: !!session
+        isAuthenticated: !!user
       }}
     >
       {children}

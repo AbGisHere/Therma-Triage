@@ -1,106 +1,140 @@
 'use client'
 
-import React from 'react'
-import { AlertTriangle, Bed, Wind, Users } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { AlertTriangle, Activity, Users } from 'lucide-react'
+import { api } from '@/lib/api'
+
+interface AlertCard {
+  title: string
+  value: string
+  status: 'critical' | 'warning' | 'normal'
+  change: string
+  icon: React.ReactNode
+}
 
 export const CriticalAlertCards: React.FC = () => {
-  const alerts = [
-    {
-      title: 'ICU Capacity',
-      value: '95% Full',
-      status: 'critical',
-      icon: Bed,
-      details: '18/19 beds occupied',
-      trend: '+2 admissions in last hour'
-    },
-    {
-      title: 'Cooling Units',
-      value: '2 Available',
-      status: 'warning',
-      icon: Wind,
-      details: '8 units total, 6 in use',
-      trend: 'Expected shortage in 2 hours'
-    },
-    {
-      title: 'Staff Status',
-      value: 'Surge Level: HIGH',
-      status: 'warning',
-      icon: Users,
-      details: '12 doctors, 28 nurses on floor',
-      trend: 'Requesting emergency backup'
-    }
-  ]
+  const [bedStats, setBedStats] = useState<any>(null)
+  const [resourceAlerts, setResourceAlerts] = useState<any>(null)
+  const [staffSurge, setStaffSurge] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
-  const getStatusStyles = (status: string) => {
-    switch (status) {
-      case 'critical':
-        return {
-          bg: 'bg-red-50 dark:bg-red-900/20',
-          border: 'border-red-200 dark:border-red-800',
-          text: 'text-red-700 dark:text-red-400',
-          icon: 'text-red-500',
-          pulse: 'animate-pulse'
-        }
-      case 'warning':
-        return {
-          bg: 'bg-orange-50 dark:bg-orange-900/20',
-          border: 'border-orange-200 dark:border-orange-800',
-          text: 'text-orange-700 dark:text-orange-400',
-          icon: 'text-orange-500',
-          pulse: ''
-        }
-      default:
-        return {
-          bg: 'bg-gray-50 dark:bg-gray-900/20',
-          border: 'border-gray-200 dark:border-gray-700',
-          text: 'text-gray-700 dark:text-gray-400',
-          icon: 'text-gray-500',
-          pulse: ''
-        }
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [bedsData, resourcesData, staffData] = await Promise.all([
+          api.getBedStats(),
+          api.getResourceAlerts(),
+          api.getStaffSurgeLevel()
+        ])
+
+        setBedStats(bedsData)
+        setResourceAlerts(resourcesData)
+        setStaffSurge(staffData)
+      } catch (error) {
+        console.error('Failed to fetch dashboard data:', error)
+      } finally {
+        setLoading(false)
+      }
     }
+
+    fetchData()
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchData, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const getAlertCards = (): AlertCard[] => {
+    if (!bedStats || !resourceAlerts || !staffSurge) return []
+
+    const icuOccupancy = (bedStats.icu.occupied / bedStats.icu.total) * 100
+    const erOccupancy = (bedStats.er.occupied / bedStats.er.total) * 100
+
+    return [
+      {
+        title: 'ICU Capacity',
+        value: `${bedStats.icu.occupied}/${bedStats.icu.total}`,
+        status: icuOccupancy >= 90 ? 'critical' : icuOccupancy >= 75 ? 'warning' : 'normal',
+        change: '+2 from yesterday',
+        icon: <AlertTriangle className="w-5 h-5" />
+      },
+      {
+        title: 'Cooling Units',
+        value: `${resourceAlerts.criticalAlerts} Critical`,
+        status: resourceAlerts.criticalAlerts > 0 ? 'critical' : resourceAlerts.lowAlerts > 0 ? 'warning' : 'normal',
+        change: '-3 from yesterday',
+        icon: <Activity className="w-5 h-5" />
+      },
+      {
+        title: 'Staff Status',
+        value: `${staffSurge.percentage}% Strain`,
+        status: staffSurge.percentage >= 85 ? 'critical' : staffSurge.percentage >= 70 ? 'warning' : 'normal',
+        change: '+12% from baseline',
+        icon: <Users className="w-5 h-5" />
+      }
+    ]
   }
 
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-gray-200 dark:border-slate-700 animate-pulse">
+            <div className="h-20 bg-gray-200 dark:bg-slate-700 rounded"></div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const alertCards = getAlertCards()
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {alerts.map((alert, index) => {
-        const styles = getStatusStyles(alert.status)
-        const Icon = alert.icon
-        
-        return (
-          <div
-            key={index}
-            className={`${styles.bg} ${styles.border} border rounded-xl p-6 ${alert.status === 'critical' ? styles.pulse : ''}`}
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className={`${styles.icon} p-2 rounded-lg bg-white dark:bg-slate-800`}>
-                <Icon className="w-6 h-6" />
-              </div>
-              {alert.status === 'critical' && (
-                <span className="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs font-semibold rounded-full">
-                  CRITICAL
-                </span>
-              )}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {alertCards.map((card, index) => (
+        <div
+          key={index}
+          className={`p-6 rounded-xl border ${
+            card.status === 'critical'
+              ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+              : card.status === 'warning'
+              ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+              : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                {card.title}
+              </p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                {card.value}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                {card.change}
+              </p>
             </div>
-            
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              {alert.title}
-            </h3>
-            
-            <p className={`text-2xl font-bold ${styles.text} mb-3`}>
-              {alert.value}
-            </p>
-            
-            <div className="space-y-1">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                {alert.details}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-500">
-                {alert.trend}
-              </p>
+            <div
+              className={`p-3 rounded-lg ${
+                card.status === 'critical'
+                  ? 'bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400'
+                  : card.status === 'warning'
+                  ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-600 dark:text-yellow-400'
+                  : 'bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400'
+              }`}
+            >
+              {card.icon}
             </div>
           </div>
-        )
-      })}
+          {card.status === 'critical' && (
+            <div className="mt-4 flex items-center space-x-2">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+              <span className="text-xs font-medium text-red-600 dark:text-red-400">
+                Critical Alert
+              </span>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

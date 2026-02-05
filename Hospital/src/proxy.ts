@@ -1,25 +1,16 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { withAuth } from 'next-auth/middleware'
 
-export default withAuth(
-  function middleware(req: NextRequest) {
-    // Add any additional middleware logic here
-    return NextResponse.next()
-  },
-  {
-    pages: {
-      signIn: '/signin',
-    },
-  }
-)
+export default function middleware(request: NextRequest) {
+  // Add authentication logic here if needed
+  // For now, just allow all requests
+  
+  return NextResponse.next()
+}
 
 export const config = {
   matcher: [
-    '/dashboard/:path*',
-    '/beds/:path*',
-    '/resources/:path*',
-    '/staff/:path*',
-    '/settings/:path*'
+    '/api/:path*',
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ]
 }
